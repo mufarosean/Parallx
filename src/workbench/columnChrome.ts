@@ -31,6 +31,9 @@ export const SECTION_DRAG_TYPE = 'application/x-parallx-column-section';
 /** Folds and unfolds Open; in the palette as View: Fold Open Editors. */
 export const TOGGLE_OPEN_COMMAND = 'workbench.action.toggleOpenEditors';
 
+/** The editor type of Home's tab (Home is a required built-in, the page the title bar's mark opens). */
+const HOME_EDITOR_TYPE = 'home';
+
 export function seatColumnChrome(sidebar: SidebarPart, services: ServiceCollection, requestSave: () => void): IDisposable {
   const store = new DisposableStore();
   const { toolsSlot, openSlot, openListSlot: list, footSlot } = sidebar;
@@ -40,6 +43,19 @@ export function seatColumnChrome(sidebar: SidebarPart, services: ServiceCollecti
   const home = createButton(null, { id: 'column.home', label: 'Home', icon: 'home', kind: 'ghost', command: 'home.open' });
   home.classList.add('column-row');
   toolsSlot.prepend(home);
+  // Lit while Home is the tab in front. The tool whose list the column shows
+  // keeps its mark (its list is still there), drawn quieter beside Home's.
+  if (services.has(IEditorService)) {
+    const editors = services.get(IEditorService);
+    const mark = (): void => {
+      const front = editors.activeEditor?.typeId === HOME_EDITOR_TYPE;
+      home.classList.toggle('column-row--current', front);
+      if (front) home.setAttribute('aria-current', 'page'); else home.removeAttribute('aria-current');
+      sidebar.element.classList.toggle('sidebar--home-front', front);
+    };
+    mark();
+    store.add(editors.onDidActiveEditorChange(mark));
+  }
 
   // Open: its label folds it and carries the count; under it, a row an editor.
   const label = createButton(null, { id: 'column.open', label: 'Open', icon: 'chevron-down', kind: 'ghost', size: 'sm', title: 'Fold or unfold what is open', command: TOGGLE_OPEN_COMMAND });

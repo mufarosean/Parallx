@@ -124,9 +124,17 @@
   color: var(--px-text);
 }
 .sidebar-tools .activity-bar-item.active,
-.sidebar-tools .activity-bar-item.active:hover {
+.sidebar-tools .activity-bar-item.active:hover,
+.column-row.px-btn.column-row--current,
+.column-row.px-btn.column-row--current:hover {
   background: var(--px-text);
   color: var(--px-bg);
+}
+/* Home in front: the tool whose list shows keeps a quieter mark. */
+.sidebar--home-front .sidebar-tools .activity-bar-item.active,
+.sidebar--home-front .sidebar-tools .activity-bar-item.active:hover {
+  background: var(--px-surface-hover);
+  color: var(--px-text);
 }
 .sidebar-tools .activity-bar-item:focus-visible,
 .column-row.px-btn:focus-visible,
@@ -157,6 +165,11 @@
 .sidebar-tools .activity-bar-item.active .activity-bar-badge--dot .activity-bar-badge-content {
   background: var(--px-bg);
   color: var(--px-text);
+}
+.sidebar--home-front .sidebar-tools .activity-bar-item.active .activity-bar-badge--count .activity-bar-badge-content,
+.sidebar--home-front .sidebar-tools .activity-bar-item.active .activity-bar-badge--dot .activity-bar-badge-content {
+  background: var(--vscode-activityBarBadge-background);
+  color: var(--vscode-activityBarBadge-foreground);
 }
 /* A finger gets a taller row. */
 [data-input-modality="touch"] .sidebar-tools .activity-bar-item,
