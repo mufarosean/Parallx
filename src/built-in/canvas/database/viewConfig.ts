@@ -131,6 +131,8 @@ export function frozenKeys(visible: readonly IDatabaseProperty[], freeze: string
 export const DEFAULT_TITLE_WIDTH = 280;
 export const DEFAULT_COLUMN_WIDTH = 160;
 export const MIN_COLUMN_WIDTH = 80;
+/** The + column at the end of a table (room for its one small button). */
+export const ADD_COLUMN_WIDTH = 40;
 
 export function columnWidth(cfg: IViewConfig, key: string): number {
   return cfg.widths[key] ?? (key === TITLE_KEY ? DEFAULT_TITLE_WIDTH : DEFAULT_COLUMN_WIDTH);

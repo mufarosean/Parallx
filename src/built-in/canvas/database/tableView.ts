@@ -20,7 +20,7 @@ import type { PropertyType } from '../properties/propertyTypes.js';
 import { isPersonEditable, keptByLabel } from './keptColumns.js';
 import type { IDatabaseProperty, IDatabaseRow, IDatabaseView } from './databaseTypes.js';
 import { TITLE_KEY } from './databaseTypes.js';
-import { MIN_COLUMN_WIDTH, columnWidth, frozenKeys, patchRecord, placeInOrder, readViewConfig, visibleProperties, type IViewConfig } from './viewConfig.js';
+import { ADD_COLUMN_WIDTH, MIN_COLUMN_WIDTH, columnWidth, frozenKeys, patchRecord, placeInOrder, readViewConfig, visibleProperties, type IViewConfig } from './viewConfig.js';
 import { calcLabel, calculate } from './calculations.js';
 import { renderCellValue } from './cellRender.js';
 import { isChecked } from './cellValues.js';
@@ -83,7 +83,7 @@ export function renderTableView(body: HTMLElement, state: ITableViewState, deps:
   // Column widths.
   const colgroup = tableEl(table, '', 'colgroup');
   for (const k of keys) { const col = tableEl(colgroup, '', 'col'); col.style.width = `${columnWidth(cfg, k)}px`; }
-  tableEl(colgroup, '', 'col'); // the + column
+  tableEl(colgroup, '', 'col').style.width = `${ADD_COLUMN_WIDTH}px`; // the + column
 
   // Header.
   const thead = tableEl(table, '', 'thead');

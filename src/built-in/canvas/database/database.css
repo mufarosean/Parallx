@@ -76,9 +76,12 @@
 /* ── Table view ──
    Columns keep their px widths (the table is as wide as its columns, never
    stretched to the pane), and the wrapper scrolls sideways; frozen columns
-   stick to its left edge. */
+   stick to its left edge. The table's width is 0 so the fixed layout holds:
+   with max-content the browser lays it out by content, and a long title
+   widens its column past the width it was given. Text longer than its
+   column ends in an ellipsis. */
 .canvas-db-scroll { overflow-x: auto; overflow-y: hidden; max-width: 100%; }
-.canvas-db-table { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: max-content; min-width: 0; }
+.canvas-db-table { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: 0; min-width: 0; }
 .canvas-db-th {
   position: relative; text-align: left; font-weight: 500; font-size: var(--px-text-sm);
   color: var(--px-text-secondary);
