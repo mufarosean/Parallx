@@ -298,8 +298,16 @@ function notifyLedgerChanged() {
 }
 function onLedgerChanged(fn) { _ledgerListeners.add(fn); return () => _ledgerListeners.delete(fn); }
 
+// The months Overview and Plan › Limits were left on: a way in that names none opens there (as before places).
+let _overviewMonth = null;
+let _planMonth = null;
+
 // Go to a section's place in Budget's one tab (a Plan view, a filter for Transactions).
-function openBudgetSection(_api, sectionId, view, params) { return openBudgetPlace(sectionId, view, params); }
+function openBudgetSection(_api, sectionId, view, params) {
+  const left = sectionId === 'overview' ? _overviewMonth : sectionId === 'plan' && (!view || view === 'budgets') ? _planMonth : null;
+  const month = monthParam(left);
+  return openBudgetPlace(sectionId, view, month && !(params && params.month) ? { ...params, month } : params);
+}
 
 // ─── Stylesheet (injected once) ────────────────────────────────────────────
 //
@@ -1180,7 +1188,7 @@ function renderSidebarNav(container, api) {
       openBudgetSection(api, section.id).catch(err => console.error('[Budget] open section failed:', err));
     });
     // A place link: Ctrl+click, or its menu's Open in Its Own Tab, opens the place in a tab of its own.
-    const link = api.ui.bindPlaceLink(row, () => budgetPlaceAddress(section.id));
+    const link = api.ui.bindPlaceLink(row, () => budgetPlaceAddress(api, section.id));
     list.appendChild(row);
     rows.set(section.id, { row, count, link });
   }
@@ -1219,7 +1227,7 @@ function renderSidebarNav(container, api) {
   refresh = serialRefresh(refresh);
   const offSync = onSyncEvent(onSync);
   const offLedger = onLedgerChanged(refresh);
-  const offMove = onBudgetSection(markCurrent);
+  const offMove = onBudgetSection(api, markCurrent);
   refresh();
 
   container.appendChild(root);
@@ -3061,6 +3069,7 @@ function renderCategoriesSection(body, api) {
 function renderOverviewSection(body, api, params) {
   // The month the address names (none: this month); the month shown goes back to the address.
   let month = monthOfParams(params);
+  _overviewMonth = month;
   const report = placeReporter();
   const root = document.createElement('div');
   root.className = 'budget-ov';
@@ -3088,7 +3097,7 @@ function renderOverviewSection(body, api, params) {
       });
       return;
     }
-    drawMonthBar(root, data, api, (k) => { month = k; void draw(); });
+    drawMonthBar(root, data, api, (k) => { month = k; _overviewMonth = k; void draw(); });
     drawSyncStrip(root, data, api);
     const grid = document.createElement('div');
     grid.className = 'budget-ov-grid';
@@ -4313,11 +4322,23 @@ function drawMonthNav(host, api, monthKey, go) {
   label.textContent = monthRange(monthKey).label;
   host.appendChild(label);
   const next = api.ui.createIconButton(host, { id: 'budget.month.next', icon: 'chevron-right', title: 'Next Month' });
-  prev.addEventListener('click', () => go(monthShift(monthKey, -1)));
-  next.addEventListener('click', () => go(monthShift(monthKey, 1)));
+  // The page draws the month again under the press: the keys stay on the same button (This Month gone: Previous Month).
+  const press = (k, id) => { const scope = host.closest('.budget-editor'); go(k); keepKeysOn(scope, id); };
+  prev.addEventListener('click', () => press(monthShift(monthKey, -1), 'budget.month.prev'));
+  next.addEventListener('click', () => press(monthShift(monthKey, 1), 'budget.month.next'));
   if (monthKey !== monthRange().key) {
-    api.ui.createButton(host, { id: 'budget.month.current', label: 'This Month', kind: 'ghost', size: 'sm', onClick: () => go(monthRange().key) });
+    api.ui.createButton(host, { id: 'budget.month.current', label: 'This Month', kind: 'ghost', size: 'sm', onClick: () => press(monthRange().key, 'budget.month.prev') });
   }
+}
+
+// Until the page is drawn again (a few frames): when the pressed button goes, the keys go to the one with `id`.
+function keepKeysOn(scope, id, pressed = document.activeElement, tries = 60) {
+  if (!scope || !scope.isConnected || tries <= 0) return;
+  const now = document.activeElement;
+  if (now && now !== document.body && now !== pressed) return; // something else took them
+  const el = scope.querySelector(`[data-px-id="${id}"]`);
+  if ((!now || now === document.body || !pressed.isConnected) && el && el !== pressed) { el.focus(); return; }
+  requestAnimationFrame(() => keepKeysOn(scope, id, pressed, tries - 1));
 }
 
 function monthName(key) {
@@ -4332,6 +4353,7 @@ function monthName(key) {
 function renderBudgetsSection(body, api, params, keep) {
   const report = placeReporter();
   let monthKey = monthOfParams(params) || monthRange().key;
+  _planMonth = monthKey;
   const root = document.createElement('div');
   root.className = 'budget-pl';
   body.appendChild(root);
@@ -4370,7 +4392,7 @@ function renderBudgetsSection(body, api, params, keep) {
     notifyLedgerChanged();
   }
 
-  function go(k) { monthKey = k; keep?.(k); void draw(); }
+  function go(k) { monthKey = k; _planMonth = k; keep?.(k); void draw(); }
 
   async function draw() {
     if (!alive) return;

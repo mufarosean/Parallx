@@ -199,16 +199,16 @@ export function openBudgetPlace(sectionId, view, params, options) {
 }
 
 /** A section's address, for a row (Ctrl+click, its menu). */
-export function budgetPlaceAddress(sectionId) {
-  return _api && _api.places ? _api.places.addressOf(BUDGET_PLACES_ID, placeOf(sectionId)) : '';
+export function budgetPlaceAddress(api, sectionId) {
+  return api && api.places ? api.places.addressOf(BUDGET_PLACES_ID, placeOf(sectionId)) : '';
 }
 
 /** For the column: the section Budget's tab shows now (null with no tab), and every move after. */
-export function onBudgetSection(listener) {
-  const at = _api && _api.places ? _api.places.current(BUDGET_PLACES_ID) : undefined;
+export function onBudgetSection(api, listener) {
+  const at = api && api.places ? api.places.current(BUDGET_PLACES_ID) : undefined;
   listener(at ? routeOf(at).section : null);
-  if (!_api || !_api.places) return { dispose() {} };
-  return _api.places.onDidMove((e) => { if (e.tool === BUDGET_PLACES_ID) listener(routeOf(e.location).section); });
+  if (!api || !api.places) return { dispose() {} };
+  return api.places.onDidMove((e) => { if (e.tool === BUDGET_PLACES_ID) listener(routeOf(e.location).section); });
 }
 
 // ─── The view ──────────────────────────────────────────────────────────────

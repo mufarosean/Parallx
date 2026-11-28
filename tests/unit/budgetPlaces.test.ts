@@ -150,7 +150,7 @@ describe('Budget places', () => {
   it('tells the column where the tab is, then each move of Budget alone', () => {
     const heard: (string | null)[] = [];
     f.setCurrent({ place: 'plan', params: { view: 'bills' } });
-    const off = onBudgetSection((s: string | null) => heard.push(s));
+    const off = onBudgetSection(f.api, (s: string | null) => heard.push(s));
     f.move('budget', { place: 'sync-log' });
     f.move('planner', { place: 'today' });
     f.move('budget', { place: 'worth' });
