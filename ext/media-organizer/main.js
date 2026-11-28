@@ -31065,7 +31065,7 @@ function renderPracticePlayer(container, api, sessionId) {
   root.tabIndex = 0;
   container.appendChild(root);
   let disposed = false;
-  let timer = null;
+  let timer = null; const placeTitle = container.closest('.mo-daily-place')?.querySelector('.px-page-header__title');
   let idleTimer = null;
   let noticeTimer = null;
   const state = { session: null, draws: [], idx: -1, running: false, remainingMs: 0, lastTick: 0, mirror: _practiceCfg.mirror, grey: _practiceCfg.greyscale };
@@ -31118,15 +31118,15 @@ function renderPracticePlayer(container, api, sessionId) {
   }
   root.addEventListener('mousemove', wake);
   root.addEventListener('click', wake);
-  root.addEventListener('keydown', (e) => {
-    if (state.idx < 0 || !end.classList.contains('mo-hidden')) return;
+  const onKeys = (e) => {
+    if (e.altKey || state.idx < 0 || !end.classList.contains('mo-hidden')) return; // Alt+Left/Right are Back and Forward
     if (e.key === ' ') { e.preventDefault(); togglePause(); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); void skip(); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); void goTo(state.idx - 1); }
     else if (e.key === 'm' || e.key === 'M') { state.mirror = !state.mirror; applyLook(); }
     else if (e.key === 'g' || e.key === 'G') { state.grey = !state.grey; applyLook(); }
     wake();
-  });
+  }; root.addEventListener('keydown', onKeys); if (placeTitle) placeTitle.addEventListener('keydown', onKeys); // and on Daily Study's title, where its place puts the keys
 
   function snapshot(d) { return { spent_seconds: Math.round((d._spentMs || 0) / 1000), outcome: d.outcome, drawn_at: d.drawn_at }; }
   function flushSpent() {
@@ -31318,7 +31318,7 @@ function renderPracticePlayer(container, api, sessionId) {
       timer = setInterval(tick, 250);
       const first = state.draws.findIndex((d) => d.outcome === 'pending');
       await goTo(first >= 0 ? first : 0);
-      const place = container.closest('.mo-daily-place'); if (!place || !place.contains(document.activeElement)) root.focus(); // Daily Study's place keeps the keys on its title
+      const place = container.closest('.mo-daily-place'); if (!place || !place.contains(document.activeElement)) root.focus(); // Daily Study's place keeps the keys on its title, which takes the player's keys too
     } catch (err) {
       if (!disposed) root.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'The practice run could not load: ' + (err && err.message) }));
     }
@@ -32286,7 +32286,7 @@ function renderPlanEditor(container, api, planId) {
   // The tool modules still name their old tools; each lives in a step now.
   const STEP_OF = { crop: 'compose', light: 'photo', pick: 'colour', study: 'colour', grids: 'transfer', info: 'compose', process: 'compose' };
   function setTool(id) {
-    state.tool = STEP_OF[id] || id; state.notes = false; try { if (!colours.inPaints() || state.tool !== 'colour') root.dispatchEvent(new CustomEvent('mo:place-step', { bubbles: true, detail: { step: '' } })); } catch { /* still being made */ } // My Paints shows only on the Colour step
+    state.tool = STEP_OF[id] || id; state.notes = false; try { if (state.tool !== 'colour') colours.leave(); } catch { /* still being made */ } // My Paints is a step of the Colour step: leaving it closes My Paints
     if (['photo', 'values', 'colour'].includes(state.tool)) state.view = state.tool; // what Transfer and Export show
     if (state.tool !== 'photo') photo.stopRemoving();
     syncShell();

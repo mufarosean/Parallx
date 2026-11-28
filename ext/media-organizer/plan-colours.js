@@ -520,6 +520,8 @@ export function moPlanColours(ctx) {
     valuesPanel,
     pickPanel,
     inPaints: () => view === 'paints',
+    /** The plan left the Colour step: My Paints closes, and the trail drops its crumb. */
+    leave() { if (view !== 'paints') return; view = 'list'; ctx.root.dispatchEvent(new CustomEvent('mo:place-step', { bubbles: true, detail: { step: '' } })); },
     picker: { on: () => picking, set: (v) => { picking = !!v; if (!picking) hideLoupe(); }, size: () => shared.pickSize, setSize: (v) => { shared.pickSize = Math.max(1, Math.min(45, Math.round(v))); void savePick(io); if (point) setPoint(point.u, point.v, false); } },
     sync,
     // A new variation or an undo: the colour shown may be gone.

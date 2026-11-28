@@ -37,7 +37,8 @@ export function moRenderColourSheet(container, api, sheetId) {
 
   // ── what the page is made of (built once) ──
   const top = moEl('div', 'mo-cs-top');
-  const titleEl = moEl('h2', 'mo-cs-title');
+  const pageHead = ui.createPageHeader(null, { title }); // the kit's title: where the keys land after a move to this sheet
+  const titleEl = pageHead.querySelector('.px-page-header__title'); titleEl.classList.add('mo-cs-title');
   const body = moEl('div', 'mo-cs-body');
   const left = moEl('div', 'mo-cs-left'), right = moEl('div', 'mo-cs-right');
   body.append(left, right);
@@ -59,7 +60,7 @@ export function moRenderColourSheet(container, api, sheetId) {
   const segmented = (parent, id, label, items, value, onChange) => { const s = ui.createSegmented(parent, { id: `media-organizer.colour.${id}`, ariaLabel: label, value, items: items.map(([v, l]) => ({ value: v, label: l })), onChange }); disposers.push(() => s.dispose()); return s; };
 
   // top bar
-  top.appendChild(titleEl);
+  top.appendChild(pageHead);
   top.appendChild(moEl('span', 'mo-cs-grow'));
   const setDd = dropdown(top, 'paintSet', 'Paint set', [{ value: '', label: 'Paints in No Set' }], '', (v) => void useSet(v));
   const paintsBtn = go(top, 'myPaints', 'My Paints', 'palette');

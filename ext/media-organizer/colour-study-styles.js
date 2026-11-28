@@ -7,6 +7,7 @@
 export const MO_COLOUR_CSS = `
 .mo-cs { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--px-bg); color: var(--px-text); font-size: var(--px-text-sm); }
 .mo-cs-top { display: flex; align-items: center; gap: var(--px-space-2); padding: var(--px-space-2) var(--px-space-4); border-bottom: 1px solid var(--px-border); flex: none; }
+.mo-cs-top > .px-page-header { flex: 0 1 auto; min-width: 0; margin: 0; padding: 0; }
 .mo-cs-title { margin: 0; font-size: var(--px-text-md); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .mo-cs-grow { flex: 1; }
 .mo-cs-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--px-space-5); padding: var(--px-space-4); width: 100%; margin: 0 auto; box-sizing: border-box; }
