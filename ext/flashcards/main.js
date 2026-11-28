@@ -5589,7 +5589,11 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
    separated by whitespace; one restrained review histogram on a baseline. ── */
 .fc-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--px-space-5) var(--px-space-4); margin-bottom: var(--px-space-6); }
 .fc-stat__value { font-family: var(--px-font-display); font-size: var(--px-text-2xl); font-weight: 500; line-height: 1; letter-spacing: -0.01em; color: var(--px-text); font-variant-numeric: lining-nums tabular-nums; }
+/* The kit's page header sits in a page Flashcards already pads: no padding of its own, so it lines up with what is under it. */
+.fc-pane .px-page-header { padding: 0; }
 .fc-view > .px-page-header { margin-bottom: var(--px-space-4); }
+.fc-row > .px-page-header { flex: 1 1 12em; min-width: 0; }
+.fc-row > .px-page-header .px-page-header__title { white-space: normal; overflow-wrap: anywhere; }
 .fc-chart-head { display: flex; justify-content: space-between; align-items: baseline; }
 .fc-chart-head__n { font-family: var(--px-font-mono); font-weight: 400; color: var(--px-text-muted); }
 .fc-chart__bar--done { background: var(--px-success); }
@@ -6379,10 +6383,21 @@ function createEditorPane(container, input, nav) {
   const body = el('div', 'fc-pane__body');
   root.appendChild(body);
   container.appendChild(root);
-  // With the keys on the Study title, the session's keys (Space, 1 to 4) still grade.
+  // With the keys on the Study title, the session's keys (Space, 1 to 4) still grade; a card asking for a
+  // typed answer takes what is typed into its answer box instead (a letter there is an answer, not a shortcut).
   header.onkeydown = (e) => {
     const main = state.route.view === 'study' ? body.querySelector('.fc-study__main') : null;
-    if (main && typeof main.onkeydown === 'function' && e.target?.classList?.contains('px-page-header__title')) main.onkeydown(e);
+    if (!main || !e.target?.classList?.contains('px-page-header__title')) return;
+    const answer = main.querySelector('.fc-study__produce-input');
+    if (answer && !answer.disabled) {
+      if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+      e.preventDefault();
+      answer.focus();
+      answer.setRangeText(e.key, answer.selectionStart, answer.selectionEnd, 'end');
+      answer.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    if (typeof main.onkeydown === 'function') main.onkeydown(e);
   };
   const syncHeader = () => {
     header.replaceChildren();
