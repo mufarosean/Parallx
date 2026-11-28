@@ -48,6 +48,8 @@ const SCREENS = [
   ['pdf'], ['pdf.reading'], ['markdown'], ['worksheet.openScratch'], ['worksheet.bank'], ['worksheet.dashboard'], ['worksheet.plan'], ['worksheet.quizzes'], ['worksheet.practice'], ['worksheet.importExcel'], ['worksheet.generate'], ['worksheet.settings'], ['worksheet.newSheet', 'Audit Sheet'], ['workbench.action.quickOpen'], ['workbench.action.showCommands'],
   ['ext:workspaceGraph.open'], ['ext:budget.openTransactions'], ['ext:flashcards.open'], ['ext:conceptLab.open'],
   ['ext:media-organizer.openGrid'], ['ext:textGenerator.openHome'], ['ext:browser.newTab'], ['ext:study.open'],
+  // Atelier's places share its one tab (getting around piece 4): its screens with a command of their own, audited as screens too.
+  ['ext:media-organizer.openTagReview'], ['ext:media-organizer.findDuplicates'], ['ext:media-organizer.practiceSession'], ['ext:media-organizer.dailyStudy'],
   // Seeded content (audit-seed.mjs): what an empty workspace never shows.
   ['seed:page'], ['seed:conceptMap'], ['seed:database'], ['seed:study.progress'], ['seed:study.unit'], ['seed:study.unit.picker'], ['seed:study.unit.matches'], ['seed:study.plan'], ['seed:study.plan.sheet'], ['seed:imageEditor'], ['seed:imageEditor.generate'], ['seed:imageEditor.masks'], ['seed:imageEditor.masks.subject'], ['seed:plan.masks'], ['seed:plan.masks.words'], ['seed:clipEditor'], ['seed:chat'], ['seed:chat.timing'], ['seed:chat.citation'],
   // Painting Plans (behind the art tools setting, which the seed turns on).
