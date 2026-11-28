@@ -2425,7 +2425,139 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   *Only his machine can show:* his library at its real size (the probe's
   has five items), his Daily Study photo (here "not on disk"), and the four
   probes that need his photos; Windows was not run.
-- *Next:* piece 5, Study onto the point, in a new session.
+- **Piece 5 done (2026-11-28): Study onto the places point.**
+  *What shipped:* Study's screens are places in ONE tab named for the
+  place, with Study's icon (`ext/study/src/68-places.js`, through
+  `api.places` only, editor type `study-place`): Home ("Home"), a subject
+  (its name), its Progress ("Progress"), its Plan (the plan's name), a unit
+  (its name; a place inside its subject), Weak Spots, Marked. The trail
+  starts at Study and names the subject and the unit: `Study › Exam 7 ›
+  Mack`, `Study › Exam 7 › Progress`, `Study › Exam 7 › <plan>`; the
+  subject's crumb goes to the subject's place. Addresses carry the ids:
+  `parallx://place/study/unit?subject=<id>&unit=<row id>`,
+  `/progress?subject=<id>`, `/plan?plan=<id>`, `/subject?subject=<id>`,
+  `/weak`, `/marked`, `/home`. Every place has the kit's page header as its
+  title, and after a move the keys land there (the unit's own move of the
+  keys to Study…, and Progress's and the Plan's to the pane, are gone where
+  the places point is). Tabs of the older build (`study` with `home`,
+  `progress-<id>`, `unit-<id>-<row>`, `plan-<id>`) come back as the place in
+  the one tab (`formerTabs`), not doubled; its other tabs (a session, a
+  Learn page, the sheets) come back as they were. Things keep their tabs: a
+  session (named after itself; its making, questions, results and review
+  stay inside it, and its "Back to Results" step stays), and a chapter read
+  in Learn. Every way in goes there through `stOpenPane`: seen on the real
+  app (the acceptance probe) for the column's rows, the commands
+  `study.open`, `.openHome`, `.openProgress`, `.openUnit`, `.openPlan`,
+  `.weakSpots`, `.studyMarked`, `.newPlan`, `.studySubject`, `.newSubject`,
+  the app Home's Study card (Start Session), a place's address in a link,
+  `parallx://study/session/<id>` and `/concept/<id>`, the chat's
+  `study_session` (Learn) and `study_results`; read in code for the
+  dashboard widget, Study's own Home's cards and the other chat tools.
+  Worksheets and Flashcards have no link into Study (none in their code).
+  The column marks where he is with the shared mark (a session's own tab in
+  front marks its row; else the place of Study's tab), its rows are place
+  links (Ctrl+click, their menu: Open, Open in Its Own Tab); a subject's and
+  a unit's rows keep their own menus, with Open in Its Own Tab added.
+  Study's own mark `st-sb__it--on` is gone. With no places point (an
+  older host) Study opens a tab per screen, as before.
+  *New pages, the calls the rule left, decided for him to overrule:* a
+  subject had no screen: its place is a page (`68-place-pages.js`) with
+  its header (Study…, its actions), its plan and Progress, and its units,
+  each a link to the unit's place; pressing the subject's name in the
+  column goes there (it used to open the setup sheet; Study… is in its
+  More Actions and on the page). Weak Spots and Marked had no screen: each
+  place lists what it holds (the weak or stale concepts with their
+  material, the marked questions with where they are from) with **Start
+  Session** at its head; the column's rows, and the commands **Study Weak
+  Spots** and **Study Marked Questions**, now land on the place, and Start
+  Session starts the session as the row did (one more press); the
+  dashboard widget's "Study the Weakest 20" still starts it at once. New
+  command **Open Subject…**. The sheets (New Session setup, New Subject,
+  New Plan) stay dialogs, each in a tab of its own that closes when done
+  (as Settings stays a dialog); a chapter read in Learn is a thing. Tab
+  names: a unit's tab is the unit's name ("Mack"), its page title stays
+  "Exam 7 · Mack"; Progress's tab "Progress", its title "Exam 7 Progress".
+  *The core gained, generic:* `ui.bindPlaceLink(element, address, { menu:
+  false })`: a row with a context menu of its own keeps it and gains only
+  Ctrl+click (`src/ui/link.ts`, `parallx.d.ts`, guide §4.3b;
+  `tests/unit/placeLinkMenu.test.ts`). The modularity reviewer found no
+  breach.
+  *How it was checked:* the acceptance probe
+  `tests/probes/getting-around-study-acceptance.mjs`, written first by the
+  app-verifier (6dcb9b92), gave 11/78 on the app as it was (seven guards and
+  four titles already there); it passes 78/78 unedited on the build commit
+  c3eebb8f and again on ba8b2e01 (seen on the real app, hidden). Pieces 1 to
+  4's probes 23/23, 30/30, 59/59, 114/114 on c3eebb8f. Typecheck, vitest
+  (757 files passed, 3 skipped, on c3eebb8f), build; with
+  `tests/unit/studyPlaces.test.ts` (new). Study's own probes on ba8b2e01,
+  against a build of ff7a4df0 (the build before the piece): `study-app-probe`
+  0 failures, `study-plan-tab-probe` exit 0, `study-plan-acceptance` 92/92
+  on both; after the changed checks below, `study-progress-acceptance`
+  87/87 (87/87 before), `study-unit-acceptance` 74/74 (74/74),
+  `study-usable-acceptance` 59/59 (59/59), `study-record-acceptance` 61/72
+  (61/72: 6.2 to 6.7, 7.3 to 7.5, 9.2, 9.4 fail on both),
+  `study-walk-acceptance` 70/74 (70/74: 0.9, 1.5, 1.7, 9.3 on both),
+  `study-work-acceptance` 76/79 (76/79: 2.4, 2.8, 7.4 on both); those
+  failures are from before the piece and were not traced here. The keyboard
+  audit filtered to Study (30 screens with sub-screens, with Weak Spots,
+  Marked and the seeded subject added as screens): 2 popup problems on
+  c3eebb8f/ba8b2e01 (below, fixed), 0 on every count after the fix (a copy of
+  the audit with focus logging added, run on 162505ff). The touch-drag probe
+  all ok; the visual-consistency probe one rise, Creations' title size, as
+  before piece 1 (on ba8b2e01).
+  Review by the correctness, modularity and access reviewers, each finding
+  put to the skeptic; fixed what it reproduced and judged to matter: a
+  subject's page drawn before Study read the subject (a tab back with the
+  app) never got its "N of M questions answered" and kept its first menu
+  (Open Plan, Show or Hide Units); the header is drawn again with what
+  changed and the keys stay on its title (ba8b2e01). The keyboard audit then
+  found, on the subject's and the unit's Study…, that Escape on the setup
+  sheet left the keys on nothing in another tab: closing a tab brings
+  forward the tab beside it, and Study's one tab now sits anywhere in the
+  strip (a unit's own tab used to be the newest, so it came back by luck);
+  the sheet now brings back the tab it was opened from (162505ff; 0 on the
+  build before the piece, so new with it).
+  *Checks changed:* six older Study acceptance probes, by the app-verifier,
+  not the builder, one commit each naming every changed check (dcd4ab8c,
+  5d0d1e22, 254a9acf, 99c61726, 3f3dfbc6, d0155c2d): they found a screen by
+  its old tab of its own ("Exam 7 Progress", "Exam 7 · Mack"); on Study's
+  place tab they now read the same screen from the place (its address and
+  trail), demanding the same. Two demands contradicted the new rule and
+  were changed to it: unit 1.3 ("another unit opens a tab of its own") now
+  demands that the one tab moves and Ctrl+click gives a second; a unit's
+  session started by pressing its row then Enter (the keys were on Study…)
+  now presses the page's Study… (the keys land on the title). Usable 9.3
+  starts the marked set from the Marked place's Start Session.
+  `studyPane.test.ts` counts 37 manifest commands (Open Subject… added; the
+  test lists every command); `docs/reference/commands.md` regenerated;
+  `keyboard-audit-probe.mjs` and `audit-seed.mjs` gained Study's Weak
+  Spots, Marked and the seeded subject as screens. No assertion removed, no
+  baseline raised; the acceptance probe never edited.
+  *Reported and left* (the skeptic judged them not worth acting on, or they
+  are from before the piece): on Weak Spots and Marked a change to the list
+  while the keys are on Start Session drops them (the header is drawn
+  again); the subject page's "Plan and progress" group can be an empty list
+  for a subject whose databases are missing and that has no plan; group
+  heading ids repeat when the same place is open twice; a material's row
+  lost its selected background (its chapters still show under it); the
+  shared mark's accent icon colour is overridden by Study's Subjects
+  section, so a current subject or unit row shows the mark's background and
+  text but its own icon colour; session rows are plain rows a keyboard does
+  not reach (from before); with no places point, a subject, Weak Spots or
+  Marked tab reopened after a restart draws the setup sheet (no host of his
+  lacks the point); "Study Weak Spots" now opens a page (its title says
+  study); the row menu's Open in Its Own Tab has no Ctrl+Click hint. A
+  tab of a unit whose row was put in the Trash is named "Unit" after a
+  restart (Study no longer has its name; the page says it is gone); a
+  Study tab behind another comes back from a restart with no trail until
+  pressed (the bar shows only the tab in front). A tab opened in a full
+  tab strip is not scrolled fully into view (both builds; the core's tab
+  bar, not this piece).
+  *Only his machine can show:* his subjects, plans and sessions at their
+  real size; a model for Weak Spots' sessions (none here: the probe's
+  Study Weak Spots case needed none, as it lands on the place); Windows
+  was not run.
+- *Next:* piece 6, Flashcards onto the point, in a new session.
 
 
 How the app looks and moves: new surfaces, polish of existing ones, the
@@ -4715,7 +4847,8 @@ table):** twelve pieces, under UI improvements, "Getting around";
 piece 1, the core point, done 2026-11-27 (proved on Planner); piece 2,
 Back and Forward, done 2026-11-27; piece 3, Worksheets onto the point,
 done 2026-11-27; piece 4, Atelier onto the point, done 2026-11-28;
-piece 5, Study, opens the next session.
+piece 5, Study onto the point, done 2026-11-28; piece 6, Flashcards,
+opens the next session.
 
 **Waiting for his word (saved 2026-11-28 at his asking):** the seven
 questions on Home, under "Home: the page the app opens on", "For him to
