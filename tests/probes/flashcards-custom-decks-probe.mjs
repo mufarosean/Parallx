@@ -9,6 +9,9 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+// The way back to Decks: Flashcards' own breadcrumb ("Decks / …" in the pane) became the core's trail in the bar
+// under the tabs (Getting around, piece 6); its first crumb, "Flashcards", goes to Decks.
+const TRAIL_HOME = '.editor-ribbon .parallx-breadcrumb-item:visible:has-text("Flashcards") >> nth=0';
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-fc-custom'));
 
 function launchEnv(appRoot) {
@@ -113,7 +116,7 @@ async function main() {
     check('a card from a second deck joins by tag', !tagged.isError, tagged.content);
 
     // Home after.
-    await page.click('.fc-pane__crumbs >> text="Decks"');
+    await page.click(TRAIL_HOME);
     await page.waitForSelector('.fc-deck-card--custom', { timeout: 20_000 });
     const home = await page.$eval('.fc-deck-card--custom', (el) => ({
       name: el.querySelector('.fc-deck-card__name')?.textContent,
@@ -169,8 +172,9 @@ async function main() {
     await page.click('.fc-deck-card--custom .fc-deck-card__info');
     await page.waitForSelector('.fc-custom__card', { timeout: 20_000 });
     const pageState = await page.evaluate(() => ({
-      title: document.querySelector('.fc-custom .fc-view__title')?.textContent,
-      crumbs: document.querySelector('.fc-pane__crumbs')?.textContent,
+      // The page's title is the kit's header, where you are is the core's trail (both were Flashcards' own before piece 6).
+      title: document.querySelector('.fc-custom .px-page-header__title')?.textContent,
+      crumbs: [...document.querySelectorAll('.editor-ribbon .parallx-breadcrumb-item')].filter((c) => c.getClientRects().length).map((c) => c.textContent.trim()).join(' / '),
       groups: [...document.querySelectorAll('.fc-custom__group-name')].map((n) => n.textContent),
       cards: [...document.querySelectorAll('.fc-custom__front')].map((n) => n.textContent),
       sub: document.querySelector('.fc-custom__sub')?.textContent,
@@ -188,7 +192,7 @@ async function main() {
     const mine = new Set([idsA[0], idsA[1], idsB[0]]);
     const first = Number(String(await page.$eval('.fc-card__id', (e) => e.textContent)).replace('#', ''));
     check('the study session serves a card of the custom deck', mine.has(first), first);
-    const studyCrumbs = await page.$eval('.fc-pane__crumbs', (e) => e.textContent);
+    const studyCrumbs = await page.evaluate(() => [...document.querySelectorAll('.editor-ribbon .parallx-breadcrumb-item')].filter((c) => c.getClientRects().length).map((c) => c.textContent.trim()).join(' / '));
     check('the study view says which custom deck', /Model Specifications/.test(studyCrumbs || ''), studyCrumbs);
     const progress = await page.evaluate(() => document.querySelector('.fc-study__progress, .fc-progress, .fc-study__count')?.textContent || '');
     console.log('[probe] study progress text ->', progress);
@@ -208,7 +212,7 @@ async function main() {
     }
 
     // Study All: every card, as a cram.
-    await page.click('.fc-pane__crumbs >> text="Decks"');
+    await page.click(TRAIL_HOME);
     await page.waitForSelector('.fc-deck-card--custom', { timeout: 20_000 });
     await page.click('.fc-deck-card--custom button:has-text("Study All")');
     await page.waitForSelector('.fc-card__id', { timeout: 20_000 });
@@ -217,7 +221,7 @@ async function main() {
     await shot(page, 'custom-6-study-all.png');
 
     // Remove one card from the custom deck; it stays in Paper A.
-    await page.click('.fc-pane__crumbs >> text="Decks"');
+    await page.click(TRAIL_HOME);
     await page.waitForSelector('.fc-deck-card--custom', { timeout: 20_000 });
     await page.click('.fc-deck-card--custom .fc-deck-card__info');
     await page.waitForSelector('.fc-custom__card', { timeout: 20_000 });
@@ -229,7 +233,7 @@ async function main() {
     check('the removed card is still in its own deck', /Paper A/.test(String(still.content)) && !/deck-model-specifications/.test(String(still.content)), still.content);
 
     // Delete the custom deck from its row menu; the cards stay.
-    await page.click('.fc-pane__crumbs >> text="Decks"');
+    await page.click(TRAIL_HOME);
     await page.waitForSelector('.fc-deck-card--custom', { timeout: 20_000 });
     await page.click('.fc-deck-card--custom button[aria-label^="Actions for"]');
     await page.waitForTimeout(500);
