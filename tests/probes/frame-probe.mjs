@@ -171,6 +171,22 @@ try {
   const atHome = await frame();
   check('pressing Home opens the Home tab', await page.evaluate(() => document.querySelector('.editor-tab-bar .ui-tab--active .ui-tab-label')?.textContent) === 'Home', null);
   check('and the column stays: the same tool is lit, with its list', atHome.head === was.head && atHome.rows.find((r) => r.selected === 'true')?.name === was.rows.find((r) => r.selected === 'true')?.name, { was: was.head, now: atHome.head });
+  // Home's row is the lit one while Home is in front; the tool's mark steps back.
+  // Read with the mouse elsewhere and the colour transitions run to their end (a hidden window does not advance them).
+  const lit = async () => { await page.mouse.move(900, 500); await page.waitForTimeout(200); return page.evaluate(() => {
+    const h = document.querySelector('[data-px-id="column.home"]');
+    const t = document.querySelector('.sidebar-tools .activity-bar-item.active');
+    for (const el of [h, t]) for (const a of el?.getAnimations() ?? []) a.finish();
+    return { current: h?.getAttribute('aria-current') ?? null, homeBg: h ? getComputedStyle(h).backgroundColor : null, toolBg: t ? getComputedStyle(t).backgroundColor : null };
+  }); };
+  const homeLit = await lit();
+  check('Home\'s row is lit (aria-current="page") while Home is in front, and the tool\'s mark is not the same', homeLit.current === 'page' && homeLit.homeBg !== 'rgba(0, 0, 0, 0)' && homeLit.homeBg !== homeLit.toolBg, homeLit);
+  await shot('dark-home-lit.png');
+  await cmd(page, 'tools.showInstalled'); await page.waitForTimeout(900);
+  const away = await lit();
+  check('another tab in front: Home\'s row is not lit and the tool\'s mark is back', away.current === null && away.homeBg === 'rgba(0, 0, 0, 0)' && away.toolBg === homeLit.homeBg, away);
+  await page.mouse.click(was.home.x + 30, was.home.y + was.home.h / 2); await page.waitForTimeout(900);
+  check('pressing Home again lights it again', (await lit()).current === 'page', null);
 
   // The bell opens the list of notices under it.
   f = await frame();
