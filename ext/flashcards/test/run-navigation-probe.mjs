@@ -6,12 +6,22 @@
 // Deck and Browse Cards surfaced the tab on whatever it last showed and looked
 // dead. It also pins the sidebar rail, the pane breadcrumb, and the Decks home.
 //
+// Since piece 6 of Getting around, Flashcards' screens are places of the core:
+// its pane is a place's drawing, opened by the core's places service, named and
+// given its trail there. So the bridge here is the real one where it matters:
+// src/api/bridges/placesBridge.ts createPlacesApi over src/services/places.ts,
+// the kit's createPageHeader, markCurrent and bindPlaceLink, loaded from the
+// TypeScript sources with esbuild at run time; the editor area is a fake that
+// keeps each tab's ToolEditorInput across its pane being torn down and rebuilt,
+// as tests/unit/flashcardsBehavior.test.ts does.
+//
 // Headless: jsdom + node:sqlite, no Electron, no window
 // (dev machine = study machine).
 //
 // Run:  node ext/flashcards/test/run-navigation-probe.mjs
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
@@ -23,34 +33,86 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBe
 global.window = dom.window;
 global.document = dom.window.document;
 for (const k of ['HTMLElement', 'CustomEvent', 'Event', 'Node', 'getComputedStyle']) global[k] = dom.window[k];
+// The core's modules read the browser's globals (Element, KeyboardEvent, …): every one jsdom has.
+for (const k of Object.getOwnPropertyNames(dom.window)) { if (k in global) continue; try { global[k] = dom.window[k]; } catch { /* read-only */ } }
 global.requestAnimationFrame = (cb) => setTimeout(() => cb(Date.now()), 0);
 global.cancelAnimationFrame = (id) => clearTimeout(id);
 try { Object.defineProperty(global, 'navigator', { value: dom.window.navigator, configurable: true }); } catch {}
 
 const sql = new DatabaseSync(':memory:');
+const applied = new Set();
 const dbApi = {
   async open() { return {}; },
-  async migrate(dir) { for (const f of fs.readdirSync(dir).sort()) sql.exec(fs.readFileSync(path.join(dir, f), 'utf8')); return {}; },
+  // Each migration once, as the real runner applies them (the probe migrates first to seed the workspace's decks).
+  async migrate(dir) { for (const f of fs.readdirSync(dir).sort()) { if (applied.has(f)) continue; sql.exec(fs.readFileSync(path.join(dir, f), 'utf8')); applied.add(f); } return {}; },
   async run(s, p = []) { try { const r = sql.prepare(s).run(...p); return { changes: Number(r.changes), lastInsertRowid: Number(r.lastInsertRowid) }; } catch (e) { return { error: e }; } },
   async get(s, p = []) { try { return { row: sql.prepare(s).get(...p) ?? null }; } catch (e) { return { error: e }; } },
   async all(s, p = []) { try { return { rows: sql.prepare(s).all(...p) }; } catch (e) { return { error: e }; } },
 };
 
-let editorProvider = null, sidebarProvider = null;
+// The core's places, kit and tab input, from their TypeScript sources.
+const ROOT = path.resolve(EXT, '..', '..');
+const { build } = await import('esbuild');
+const coreEntry = [
+  ['platform/events.js', 'Emitter'], ['api/bridges/editorsBridge.js', 'ToolEditorInput'], ['api/bridges/placesBridge.js', 'createPlacesApi'],
+  ['services/places.js', 'places'], ['ui/kit.js', 'createPageHeader'], ['ui/link.js', 'markCurrent, bindPlaceLink, installPlaceOpener'],
+].map(([f, names]) => `export { ${names} } from ${JSON.stringify(path.join(ROOT, 'src', f))};`).join('\n');
+const coreBuilt = await build({ stdin: { contents: coreEntry, resolveDir: ROOT, loader: 'ts' }, bundle: true, format: 'esm', platform: 'browser', write: false, logLevel: 'silent', loader: { '.css': 'empty' } });
+const coreDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fc-nav-core-'));
+fs.writeFileSync(path.join(coreDir, 'core.mjs'), coreBuilt.outputFiles[0].text);
+const core = await import(pathToFileURL(path.join(coreDir, 'core.mjs')).href);
+fs.rmSync(coreDir, { recursive: true, force: true });
+
+// The editor area: one host per tab, the tab's input kept while its pane is torn down and rebuilt; one tab in front.
+const TOOL_ID = 'parallx-community.flashcards';
+const editorProviders = new Map();
+const paneHosts = new Map();
+const panes = new Map();
+const inputs = new Map();
+let activeKey;
+const onDidActiveEditorChange = new core.Emitter();
+const setActive = (key) => { if (activeKey === key) return; activeKey = key; onDidActiveEditorChange.fire({ id: `${TOOL_ID}:${key}` }); };
+const editors = {
+  registerEditorProvider: (typeId, provider) => { editorProviders.set(typeId, provider); return { dispose() { editorProviders.delete(typeId); } }; },
+  openEditor: async (o) => {
+    const key = `${o.typeId}:${o.instanceId ?? ''}`;
+    if (paneHosts.has(key)) { setActive(key); return; }
+    const provider = editorProviders.get(o.typeId);
+    if (!provider) throw new Error(`no provider for ${o.typeId}`);
+    const h = document.createElement('div');
+    document.body.appendChild(h);
+    paneHosts.set(key, h);
+    const input = new core.ToolEditorInput(o.typeId, o.title ?? 'Flashcards', undefined, o.iconHtml, provider, `${TOOL_ID}:${key}`, TOOL_ID, o.instanceId);
+    inputs.set(key, input);
+    setActive(key);
+    panes.set(key, provider.createEditorPane(h, input));
+  },
+  get openEditors() { return [...paneHosts.keys()].map((key) => ({ id: `${TOOL_ID}:${key}`, name: inputs.get(key)?.name ?? 'Flashcards' })); },
+  focusEditor: async (editorId) => { const key = editorId.startsWith(`${TOOL_ID}:`) ? editorId.slice(TOOL_ID.length + 1) : editorId; if (!paneHosts.has(key)) return false; setActive(key); return true; },
+  openFileEditor: async () => {},
+};
+const editorService = {
+  getOpenEditors: () => [...paneHosts.keys()].map((key) => ({ id: `${TOOL_ID}:${key}`, isActive: key === activeKey })),
+  onDidActiveEditorChange: onDidActiveEditorChange.event,
+};
+const placesApi = core.createPlacesApi(TOOL_ID, editors, editorService, { register: () => ({ dispose() {} }) }, []);
+core.installPlaceOpener((address, options) => core.places.openAddress(address, options));
+/** The tab as the workbench leaves it after a restore, an LRU eviction or a tab-switch teardown: open, its pane gone. */
+const evictPane = (key = 'flashcards:main') => { panes.get(key)?.dispose(); panes.delete(key); paneHosts.get(key)?.remove(); };
+/** The workbench drawing that tab's pane again when it is next shown. */
+const rebuildPane = (key = 'flashcards:main') => { const h = paneHosts.get(key); document.body.appendChild(h); panes.set(key, editorProviders.get(key.split(':')[0]).createEditorPane(h, inputs.get(key))); };
+/** The Flashcards tab in front: the core's trail for it (the bar under the tabs). */
+const trailNow = () => (inputs.get(activeKey)?.trail ?? []);
+
+let sidebarProvider = null;
 const cmds = {};
-const openEditors = [];
-let lastMenu = null;
+let lastMenu = null, lastMenuItems = [];
 const api = {
   env: { toolPath: EXT },
   database: dbApi,
   views: { registerViewProvider: (id, p) => { sidebarProvider = p; return { dispose() {} }; } },
-  editors: {
-    registerEditorProvider: (t, p) => { editorProvider = p; return { dispose() {} }; },
-    get openEditors() { return openEditors; },
-    focusEditor: async () => true,
-    openEditor: async (o) => { const id = `parallx-community.flashcards:${o.typeId}:${o.instanceId}`; if (!openEditors.some((e) => e.id === id)) openEditors.push({ id, name: o.title }); },
-    openFileEditor: async () => {},
-  },
+  editors,
+  places: placesApi,
   commands: { registerCommand: (id, h) => { cmds[id] = h; return { dispose() {} }; }, executeCommand: async () => undefined },
   window: { showInformationMessage: () => {}, showErrorMessage: (m) => console.log('[err]', m), showWarningMessage: () => {}, showInputBox: async () => null, showConfirmModal: async () => false },
   workspace: { getConfiguration: () => ({ get: (k, d) => d }), onDidChangeConfiguration: () => ({ dispose() {} }) },
@@ -58,24 +120,19 @@ const api = {
     renderMarkdown: (t) => { const d = document.createElement('div'); d.textContent = t; return d; },
     createDropdown: (c, o = {}) => { const e = document.createElement('div'); c.appendChild(e); let v = o.selected ?? ''; const ls = []; return { element: e, get value() { return v; }, set value(x) { v = x; }, setItems() {}, onDidChange: (l) => { ls.push(l); return { dispose() {} }; }, focus() {}, setDisabled() {}, dispose() {}, _fire(x) { v = x; ls.forEach((l) => l(x)); }, _items: o.items }; },
     createAiButton: (h, o) => { const b = document.createElement('button'); b.className = 'fc-btn'; b.textContent = o.label; h.appendChild(b); return b; },
-    showContextMenu: (pos, items) => { lastMenu = items.map((i) => i.label || '—'); },
-    // The kit's page header and its shared mark, as src/ui/kit.ts createPageHeader and src/ui/link.ts markCurrent draw them:
+    showContextMenu: (pos, items) => { lastMenuItems = items; lastMenu = items.map((i) => i.label || '—'); },
+    // The real kit's page header and the places mark and link, as the ui bridge gives them (src/api/bridges/uiBridge.ts):
     // the pages' titles and the column's mark moved into the core's kit (Getting around, piece 6).
-    createPageHeader: (c, o = {}) => {
-      const h = document.createElement('header'); h.className = o.front ? 'px-page-header px-page-header--front' : 'px-page-header';
-      const t = document.createElement('div'); t.className = 'px-page-header__titles';
-      const h1 = document.createElement('h1'); h1.className = 'px-page-header__title'; h1.textContent = o.title; t.appendChild(h1);
-      if (o.subtitle) { const sub = document.createElement('div'); sub.className = 'px-page-header__subtitle'; sub.textContent = o.subtitle; t.appendChild(sub); }
-      h.appendChild(t); if (c) c.appendChild(h); return h;
-    },
-    markCurrent: (e, on) => { if (on) e.setAttribute('aria-current', 'page'); else e.removeAttribute('aria-current'); e.classList.toggle('px-current', on); },
+    createPageHeader: core.createPageHeader,
+    markCurrent: core.markCurrent,
+    bindPlaceLink: core.bindPlaceLink,
   },
   lm: {}, links: { registerLinkHandler: () => ({ dispose() {} }) }, dashboard: { registerWidget: () => ({ dispose() {} }) },
 };
 
-const mod = await import(pathToFileURL(path.join(EXT, 'main.js')).href);
-await mod.activate(api, { subscriptions: [] });
-
+// The workspace already holds two decks when Flashcards starts (as in the app: a deck's name, the tab's and the
+// trail's, is read at start and on each change Flashcards makes; these rows are written here, not through it).
+await dbApi.migrate(path.join(EXT, 'db', 'migrations'));
 const now = Date.now();
 const DAY = 86400000;
 await dbApi.run('INSERT INTO fc_decks (id, name, created_at, exam_date) VALUES (1, ?, ?, ?)', ['Exam 7', now, now + 90 * DAY]);
@@ -84,6 +141,9 @@ const ins = sql.prepare('INSERT INTO fc_cards (id, deck_id, front, back, created
 for (let i = 1; i <= 60; i++) ins.run(i, 1, 'Q' + i, 'A' + i, now - i * 1000, 'new', 2.5, 0, 0, 0, 0, 0, '');
 for (let i = 61; i <= 80; i++) ins.run(i, 1, 'Q' + i, 'A' + i, now - i * 1000, 'review', 2.5, 5, now + (i - 60) * DAY, 3, i % 4, 0, '');
 for (let i = 81; i <= 95; i++) ins.run(i, 2, 'Q' + i, 'A' + i, now - i * 1000, 'new', 2.5, 0, 0, 0, 0, 0, '');
+
+const mod = await import(pathToFileURL(path.join(EXT, 'main.js')).href);
+await mod.activate(api, { subscriptions: [] });
 
 let fails = 0;
 const check = (label, ok, detail = '') => {
@@ -103,12 +163,14 @@ const onlyMark = (node, is) => { const m = marked(node); return m.length === 1 &
 const markSays = (node) => JSON.stringify({ marked: marked(node).map((e) => e.dataset.view ?? `deck:${e.dataset.deckId}`), old: oldMarks(node) });
 
 console.log('\n=== 1. route survives when no pane is alive ===');
-openEditors.push({ id: 'parallx-community.flashcards:flashcards:main', name: 'Flashcards' });
+// The one Flashcards tab is open (on Decks) and its pane is gone; Custom Study is asked for; the workbench redraws the pane.
+await cmds['flashcards.open']();
+await settle(350);
+const host = paneHosts.get('flashcards:main');
+evictPane();
 await cmds['flashcards.customStudy']();
 await settle();
-const host = document.createElement('div');
-document.body.appendChild(host);
-editorProvider.createEditorPane(host, { id: 'x', instanceId: 'main', setName() {} });
+rebuildPane();
 await settle(350);
 check('flashcards.customStudy lands on Custom Study, not the default view',
   titleIn(host) === 'Custom Study',
@@ -164,21 +226,23 @@ check('breadcrumb on the home reads Decks', host.querySelector('.fc-pane__crumbs
   host.querySelector('.fc-pane__crumbs')?.textContent);
 click([...body.querySelectorAll('.fc-deck-card__info')][0]);
 await settle(400);
-// The trail "Flashcards › Exam 7" is the core's now (the bar under the tabs; getting-around-flashcards-acceptance K
-// reads it in the real app). In the pane, where you are is the page's title: the deck's name, exactly.
-check('deck-scoped breadcrumb names the deck', titleIn(host) === 'Exam 7', titleIn(host));
+// The trail is the core's now: the bar under the tabs reads the tab's trail, from Flashcards to the deck (it was
+// "Decks / Exam 7" in the pane); the page's title is the deck's name.
+const deckTrail = trailNow().map((c) => c.label);
+check('deck-scoped breadcrumb names the deck', deckTrail.join(' / ') === 'Flashcards / Exam 7' && titleIn(host) === 'Exam 7', JSON.stringify({ trail: deckTrail, title: titleIn(host) }));
 // CHANGED DEMAND (his pick: the column marks where you are with the one shared mark, and only it): inside a deck
 // the mark is on the deck's row alone, where it used to light both Decks and the deck's row.
 check('rail lights Decks while inside a deck (now: Decks is not marked; the deck\'s row is)',
   !marked(sbHost).some((e) => e.dataset.view === 'decks') && onlyMark(sbHost, (e) => e.classList.contains('fc-deck-row') && e.dataset.deckId === '1'), markSays(sbHost));
 check('the deck row in the sidebar is selected',
   onlyMark(sbHost, (e) => e.classList.contains('fc-deck-row') && e.dataset.deckId === '1'), markSays(sbHost));
-const backCrumb = [...host.querySelectorAll('.fc-crumb--link')][0];
-if (backCrumb) { click(backCrumb); await settle(400); }
-check('breadcrumb walks back to the home', !!backCrumb && titleIn(host.querySelector('.fc-pane__body')) === 'Decks', backCrumb ? titleIn(host) : 'no crumb in the pane');
+// Back by the trail's first crumb (Flashcards, which goes to Decks), as the bar under the tabs does on a click.
+const backCrumb = trailNow()[0];
+if (backCrumb?.open) { backCrumb.open({ newTab: false }); await settle(400); }
+check('breadcrumb walks back to the home', !!backCrumb?.open && titleIn(host.querySelector('.fc-pane__body')) === 'Decks', backCrumb ? titleIn(host) : 'no crumb in the trail');
 
 console.log('\n=== 5. Custom Study + Review Ahead ===');
-document.dispatchEvent(new dom.window.CustomEvent('parallx.flashcards.route', { detail: { view: 'custom' } }));
+await cmds['flashcards.customStudy']();
 await settle(350);
 const cs = host.querySelector('.fc-pane__body');
 check('Custom Study opens', titleIn(cs) === 'Custom Study', titleIn(cs));
@@ -190,7 +254,7 @@ click(start);
 await settle(450);
 check('Extra New Cards serves a session', !!host.querySelector('.fc-study'));
 
-document.dispatchEvent(new dom.window.CustomEvent('parallx.flashcards.route', { detail: { view: 'custom' } }));
+await cmds['flashcards.customStudy']();
 await settle(350);
 const cs2 = host.querySelector('.fc-pane__body');
 click([...cs2.querySelectorAll('.fc-cs__mode')].find((m) => /Review Ahead/.test(m.textContent)));
@@ -215,13 +279,19 @@ console.log('\n=== 7. working ahead after the daily session (the blank-pane bug)
 // A deck's daily session is keyed by its id; a custom one by its launch
 // stamp. Mixing a number into that map used to throw inside the pruner,
 // AFTER the study root was appended — a blank pane with no error on screen.
-document.dispatchEvent(new dom.window.CustomEvent('parallx.flashcards.route', { detail: { view: 'study', deckId: 1 } }));
+// Study Deck, from Exam 7's row's own menu in the column (the way a person asks for a deck's session).
+const deckMenu = async (label) => { click(sbHost.querySelector('.fc-deck-row[data-deck-id="1"] .fc-deck-row__more') ?? sbHost.querySelector('.fc-deck-row__more')); await settle(60); const item = lastMenuItems.find((i) => i.label === label); if (item) item.onSelect(); return !!item; };
+const studyPicked = await deckMenu('Study Deck');
 await settle(400);
-check('the deck studies normally', !!host.querySelector('.fc-study__front'));
+// The menu's Study Deck must have been there and moved the tab to Exam 7's Study (else the session before would pass).
+check('the deck studies normally', studyPicked && trailNow().map((c) => c.label).join(' / ') === 'Flashcards / Exam 7 / Study' && !!host.querySelector('.fc-study__front'),
+  JSON.stringify({ studyPicked, trail: trailNow().map((c) => c.label) }));
 
-document.dispatchEvent(new dom.window.CustomEvent('parallx.flashcards.route', { detail: { view: 'custom', deckId: 1 } }));
+const customPicked = await deckMenu('Custom Study…');
 await settle(350);
 const cs3 = host.querySelector('.fc-pane__body');
+check('Exam 7\'s Custom Study… opens Custom Study for the deck', customPicked && titleIn(cs3) === 'Custom Study' && trailNow().map((c) => c.label).join(' / ') === 'Flashcards / Exam 7 / Custom Study',
+  JSON.stringify({ customPicked, title: titleIn(cs3), trail: trailNow().map((c) => c.label) }));
 const modeCounts = [...cs3.querySelectorAll('.fc-cs__mode')].map((m) =>
   `${m.querySelector('.fc-cs__mode-name').textContent}=${m.querySelector('.fc-cs__mode-count').textContent}`);
 check('every mode reports its own count, not just the selected one',
